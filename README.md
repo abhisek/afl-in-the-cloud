@@ -43,7 +43,7 @@ The Terraform script creates a bunch of resources in AWS. The resources basicall
 
 ## Notes
 
-The proof of concept uses multi-machine fuzzing. The `sync-dir` is on a shared network file system, something that is not recommended by the author due to lock-up issues with NFS. As workaround, we are using `-f` option to have AFL create the input file in `/tmp`. Only internal fuzzer state and crashes are shared over NFS.
+The setup uses multi-machine fuzzing to achieve scale. The `sync-dir` is on a shared network file system, something which is not recommended by the AFL author due to lock-up issues with NFS. As workaround, we are using `-f` option to have AFL create the input file in `/tmp`. Only internal fuzzer state and crashes are shared over NFS.
 
 ## References
 
