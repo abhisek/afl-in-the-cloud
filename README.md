@@ -12,12 +12,16 @@ terraform init
 ```
 
 ```bash
+terraform validate
+```
+
+```bash
 terraform apply
 ```
 
 To destroy the infrastructure
 
-```
+```bash
 terraform destroy
 ```
 

@@ -1,87 +1,107 @@
 variable "aws_region" {
-   type = "string"
-   default = "us-east-1"
+  type    = "string"
+  default = "us-east-1"
 }
 
 variable "fuzzer_image" {
-   type = "string"
+  type = "string"
+}
+
+variable "master_count" {
+  type    = "string"
+  default = "1"
+}
+
+variable "slave_count" {
+  type    = "string"
+  default = "3"
+}
+
+variable "public_key" {
+  type    = "string"
+  default = "${"~/.ssh/id_rsa.pub"}"
+}
+
+variable "private_key" {
+  type    = "string"
+  default = "${"~/.ssh/ida_rsa"}"
 }
 
 provider "aws" {
-   region = "${var.aws_region}"
+  region = "${var.aws_region}"
 }
 
 resource "aws_key_pair" "keypair" {
-   key_name = "tfkey"
-   public_key = "${file("~/.ssh/id_rsa.pub")}"
+  key_name   = "tfkey"
+  public_key = "${file("~/.ssh/id_rsa.pub")}"
 }
 
 resource "aws_vpc" "default" {
-   cidr_block = "10.0.0.0/16"
-   enable_dns_support = true
-   enable_dns_hostnames = true
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
 }
 
 resource "aws_internet_gateway" "default" {
-   vpc_id = "${aws_vpc.default.id}"
+  vpc_id = "${aws_vpc.default.id}"
 }
 
 resource "aws_route" "internet_access" {
-   route_table_id         = "${aws_vpc.default.main_route_table_id}"
-   destination_cidr_block = "0.0.0.0/0"
-   gateway_id             = "${aws_internet_gateway.default.id}"
+  route_table_id         = "${aws_vpc.default.main_route_table_id}"
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = "${aws_internet_gateway.default.id}"
 }
 
 resource "aws_subnet" "default" {
-   vpc_id                  = "${aws_vpc.default.id}"
-   cidr_block              = "10.0.1.0/24"
-   map_public_ip_on_launch = true
+  vpc_id                  = "${aws_vpc.default.id}"
+  cidr_block              = "10.0.1.0/24"
+  map_public_ip_on_launch = true
 }
 
 // https://github.com/terraform-providers/terraform-provider-aws/blob/master/examples/two-tier/main.tf
 resource "aws_security_group" "tf-security-group" {
-   name = "tf_security_group"
-   description = "Terraform group with only SSH and HTTP access"
-   vpc_id = "${aws_vpc.default.id}"
-   
-   // Allow public access to SSH
-   ingress {
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"]
-   }
+  name        = "tf_security_group"
+  description = "Terraform group with only SSH and HTTP access"
+  vpc_id      = "${aws_vpc.default.id}"
 
-   ingress {
-      from_port   = 80
-      to_port     = 80
-      protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"]
-   }
+  // Allow public access to SSH
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-   // Allow full access within subnet
-   ingress {
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["10.0.1.0/24"]    // default subnet
-   }
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-   // Allow full outgoing access
-   egress {
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
-   }
+  // Allow full access within subnet
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["10.0.1.0/24"] // default subnet
+  }
+
+  // Allow full outgoing access
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 resource "aws_efs_file_system" "shared" {
-   creation_token = "shared_storage"
+  creation_token = "shared_storage"
 
-   tags {
-      Name = "Shared-Storage"
-   }
+  tags = {
+    Name = "Shared-Storage"
+  }
 }
 
 resource "aws_efs_mount_target" "shared" {
@@ -91,7 +111,7 @@ resource "aws_efs_mount_target" "shared" {
 }
 
 resource "aws_iam_role" "tf_ec2_ecr_role" {
-  name = "Fuzzer-Role"
+  name               = "Fuzzer-Role"
   assume_role_policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -131,7 +151,7 @@ resource "aws_iam_policy" "ecs_instance_policy" {
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_policy_attach" {
-  role = "${aws_iam_role.tf_ec2_ecr_role.name}"
+  role       = "${aws_iam_role.tf_ec2_ecr_role.name}"
   policy_arn = "${aws_iam_policy.ecs_instance_policy.arn}"
 }
 
@@ -141,23 +161,24 @@ resource "aws_iam_instance_profile" "tf_ec2_profile" {
 }
 
 resource "aws_instance" "master" {
-   ami = "ami-2757f631"
-   instance_type = "t2.micro"
-   key_name = "${aws_key_pair.keypair.key_name}"
+   ami                  = "ami-2757f631"
+   instance_type        = "t2.micro"
+   key_name             = "${aws_key_pair.keypair.key_name}"
    iam_instance_profile = "${aws_iam_instance_profile.tf_ec2_profile.name}"
 
-   tags {
+   tags = {
       Name = "Master-1"
    }
 
    vpc_security_group_ids = ["${aws_security_group.tf-security-group.id}"]
-   subnet_id = "${aws_subnet.default.id}"
+   subnet_id              = "${aws_subnet.default.id}"
 
-   connection {
-      type = "ssh"
-      user = "ubuntu"
+  connection {
+      type        = "ssh"
+      user        = "ubuntu"
       private_key = "${file("~/.ssh/id_rsa")}"
-   }
+      host        = self.public_ip
+  }
 
    provisioner "remote-exec" {
       inline = [
@@ -174,7 +195,7 @@ resource "aws_instance" "master" {
    }
 
    provisioner "file" {
-      source = "scripts/poppler-seed.sh"
+      source      = "scripts/poppler-seed.sh"
       destination = "/tmp/seed.sh"
    }
 
@@ -199,11 +220,11 @@ resource "aws_instance" "master" {
 
    // Status files
    provisioner "file" {
-      source = "scripts/status.sh"
+      source      = "scripts/status.sh"
       destination = "/tmp/status.sh"
    }
    provisioner "file" {
-      source = "scripts/afl-whatsup"
+      source      = "scripts/afl-whatsup"
       destination = "/tmp/afl-whatsup"
    }
 
@@ -217,25 +238,26 @@ resource "aws_instance" "master" {
 }
 
 resource "aws_instance" "slave" {
-   ami = "ami-2757f631"
-   instance_type = "t2.micro"
-   key_name = "${aws_key_pair.keypair.key_name}"
+   ami                  = "ami-2757f631"
+   instance_type        = "t2.micro"
+   key_name             = "${aws_key_pair.keypair.key_name}"
    iam_instance_profile = "${aws_iam_instance_profile.tf_ec2_profile.name}"
-   count = 4
+   count                = "${var.slave_count}"
 
    depends_on = ["aws_instance.master"]
 
-   tags {
+   tags = {
       Name = "Slave-N"
    }
 
    vpc_security_group_ids = ["${aws_security_group.tf-security-group.id}"]
-   subnet_id = "${aws_subnet.default.id}"
+   subnet_id              = "${aws_subnet.default.id}"
 
    connection {
-      type = "ssh"
-      user = "ubuntu"
+      type        = "ssh"
+      user        = "ubuntu"
       private_key = "${file("~/.ssh/id_rsa")}"
+      host        = self.public_ip
    }
 
    provisioner "remote-exec" {
@@ -262,7 +284,7 @@ resource "aws_instance" "slave" {
    }
 }
 
-output "Master IP" {
+output "MasterIP" {
    value = "${aws_instance.master.public_ip}"
 }
 
